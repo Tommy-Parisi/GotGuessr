@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Iron Realm",
+    "slug": "got-geoguesser",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "platforms": [
+      "web"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "got-geoguesser",
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
