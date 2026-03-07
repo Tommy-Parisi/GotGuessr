@@ -1,4 +1,4 @@
-# Iron Realm — GoT GeoGuesser
+# Iron Realm - GoT GeoGuesser
 
 A lightweight TypeScript React Native Web app. Guess the real-world filming locations of Game of Thrones from photos, then place your mark on a world map.
 
@@ -53,4 +53,4 @@ src/
 | < 5,000 km | 500–1,200 |
 | 5,000+ km | 0–500 |
 
-Max score: **25,000** (Five-Eyed Raven territory)
+Max score: **25,000** (Three-Eyed Raven territory)
