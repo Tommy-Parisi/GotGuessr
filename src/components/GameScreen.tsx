@@ -110,7 +110,7 @@ export default function GameScreen({ state, currentResult, onGuess, onSubmit, on
                 activeOpacity={0.75}
               >
                 <Text style={[styles.btnText, { color: hasGuess ? '#c9a84c' : '#3a2a10' }]}>
-                  {hasGuess ? 'COMMIT TO THIS LOCATION' : 'CLICK THE MAP TO GUESS'}
+                  {hasGuess ? 'GUESS' : 'CLICK THE MAP TO GUESS'}
                 </Text>
               </TouchableOpacity>
             ) : (

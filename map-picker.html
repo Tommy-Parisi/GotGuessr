@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Map Picker</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #frame {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Transparent overlay sits above the iframe to intercept pointer events */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      cursor: crosshair;
+      /* background intentionally transparent */
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      pointer-events: none;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.15);
+      white-space: nowrap;
+      transition: opacity 0.2s;
+    }
+
+    #hud .label { color: #aaa; }
+    #hud .val   { color: #7df; }
+
+    #pin {
+      position: fixed;
+      z-index: 11;
+      pointer-events: none;
+      display: none;
+      transform: translate(-50%, -100%);
+    }
+    #pin::after {
+      content: '';
+      display: block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50% 50% 50% 0;
+      background: #f55;
+      border: 2px solid #fff;
+      transform: rotate(-45deg);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <iframe id="frame" src="https://quartermaester.info" allowfullscreen></iframe>
+
+  <div id="overlay"></div>
+
+  <div id="hud">
+    <span class="label">click the map</span>
+  </div>
+
+  <div id="pin"></div>
+
+  <script>
+    const overlay = document.getElementById('overlay');
+    const hud     = document.getElementById('hud');
+    const pin     = document.getElementById('pin');
+
+    /**
+     * Normalise a pixel position to a 0–1 fraction of the viewport,
+     * which stays meaningful regardless of window size.
+     */
+    function toFraction(px, py) {
+      return {
+        x: px / window.innerWidth,
+        y: py / window.innerHeight,
+      };
+    }
+
+    overlay.addEventListener('mousedown', (e) => {
+      const px = e.clientX;
+      const py = e.clientY;
+      const { x, y } = toFraction(px, py);
+
+      // ── 1. Update the HUD ───────────────────────────────────────────────
+      hud.innerHTML =
+        `<span class="label">px</span> <span class="val">${px}, ${py}</span>` +
+        `&nbsp;|&nbsp;` +
+        `<span class="label">frac</span> <span class="val">${x.toFixed(4)}, ${y.toFixed(4)}</span>`;
+
+      // ── 2. Move the pin marker ──────────────────────────────────────────
+      pin.style.left    = `${px}px`;
+      pin.style.top     = `${py}px`;
+      pin.style.display = 'block';
+
+      // ── 3. Broadcast via postMessage ────────────────────────────────────
+      //    Any listener (including game logic in another window/worker) can
+      //    receive this without needing cross-origin iframe access.
+      const payload = {
+        type: 'MAP_CLICK',
+        pixel: { x: px, y: py },
+        fraction: { x, y },
+        viewport: { w: window.innerWidth, h: window.innerHeight },
+        timestamp: Date.now(),
+      };
+      window.postMessage(payload, '*');
+
+      // ── 4. Pass the click through to the iframe ─────────────────────────
+      //    Temporarily disable pointer-events on the overlay so the
+      //    synthetic re-dispatch lands on the iframe's content.
+      overlay.style.pointerEvents = 'none';
+      requestAnimationFrame(() => {
+        // Re-enable after the browser has processed this frame
+        setTimeout(() => {
+          overlay.style.pointerEvents = '';
+        }, 120);
+      });
+    });
+
+    // Live mouse-tracking (optional — comment out if you only want clicks)
+    overlay.addEventListener('mousemove', (e) => {
+      const { x, y } = toFraction(e.clientX, e.clientY);
+      overlay.title = `${e.clientX}, ${e.clientY}  |  frac: ${x.toFixed(4)}, ${y.toFixed(4)}`;
+    });
+
+    // ── Receive postMessage events ──────────────────────────────────────────
+    //    Wire this up to your game logic — replace console.log with whatever
+    //    handler you need (e.g. score calculation, state update, etc.)
+    window.addEventListener('message', (e) => {
+      if (e.source !== window) return; // only trust messages from self
+      if (e.data?.type !== 'MAP_CLICK') return;
+      console.log('[MAP_CLICK]', e.data);
+      // TODO: pass e.data into your game state / scoring logic
+    });
+  </script>
+
+</body>
+</html>
