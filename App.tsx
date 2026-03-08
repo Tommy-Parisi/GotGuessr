@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator } from 'react-native'; // TouchableOpacity still used in IntroScreen/GameScreen/FinalScreen
 import { StatusBar } from 'expo-status-bar';
+import { QUARTERMAESTER_LABELS, MAJOR_LABEL_KEYS } from './src/data/locations';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -303,6 +304,34 @@ function useGlobalCSS() {
       .leaflet-control-layers, .leaflet-control-zoom, .leaflet-control-attribution,
       .leaflet-bar, .leaflet-control { display: none !important; }
       .leaflet-top, .leaflet-bottom { display: none !important; }
+
+      /* ── Map location labels (modern, lightweight) ── */
+      .qm-label {
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        color: #f3f6fb;
+        font-family: 'Cinzel', serif;
+        line-height: 1;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+        pointer-events: none;
+        transition: opacity 120ms linear;
+        transform: translate(-50%, -100%);
+      }
+      .qm-label::before { display: none !important; }
+      .qm-label-minor {
+        font-size: 10px;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.55);
+      }
+      .qm-label-major {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        color: #ffffff;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.98), 0 0 8px rgba(0,0,0,0.65);
+      }
     `;
     document.head.appendChild(style);
     
@@ -329,8 +358,8 @@ const MAP_ZOOM_SETTINGS = {
   maxZoom: 5.3,
   // Keep overall speed while using finer steps for smoother motion.
   zoomSnap: 0.05,
-  zoomDelta: 0.35,
-  wheelPxPerZoomLevel: 6,
+  zoomDelta: 0.2,
+  wheelPxPerZoomLevel: 12,
   wheelDebounceTime: 0,
 };
 
@@ -369,6 +398,15 @@ function isOutsideTileRange(coord: { x: number; y: number }, zoom: number): bool
   if (coord.x < 0 || coord.x >= tileRange) return true;
   if (coord.y < 0 || coord.y >= tileRange) return true;
   return false;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ─── WorldMap (Leaflet-based custom map) ───────────────────────────────────
@@ -439,11 +477,50 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
         minZoom: MAP_ZOOM_SETTINGS.minZoom,
         maxZoom: MAP_ZOOM_SETTINGS.maxZoom,
         maxNativeZoom: 5,
-        updateWhenZooming: true,
-        updateInterval: 32,
-        keepBuffer: 5,
+        // Performance mode: only refresh tiles after zoom settles.
+        updateWhenZooming: false,
+        updateInterval: 100,
+        keepBuffer: 2,
       });
       tileLayer.addTo(map);
+
+      const labelsLayer = L.layerGroup().addTo(map);
+      const labelMarkers: Array<{ marker: any; isMajor: boolean }> = [];
+      QUARTERMAESTER_LABELS.forEach((location) => {
+        const isMajor = MAJOR_LABEL_KEYS.has(location.key);
+        const marker = L.marker([location.lat, location.lng], {
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: `qm-label ${isMajor ? 'qm-label-major' : 'qm-label-minor'}`,
+            html: `<span>${escapeHtml(location.name)}</span>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          }),
+        });
+        marker.setZIndexOffset(isMajor ? 1000 : 0);
+        marker.addTo(labelsLayer);
+        labelMarkers.push({ marker, isMajor });
+      });
+
+      const clamp = (n: number) => Math.max(0, Math.min(1, n));
+      const updateLabelOpacity = () => {
+        const z = map.getZoom();
+        // Major labels should remain visible even at minimum zoom.
+        const majorOpacity = clamp(0.85 + ((z - MAP_ZOOM_SETTINGS.minZoom) * 0.2));
+        // Minor labels fade out as user zooms out.
+        const minorOpacity = clamp((z - 3.35) / 1.15);
+
+        labelMarkers.forEach(({ marker, isMajor }) => {
+          const el = marker.getElement() as HTMLElement | null;
+          if (!el) return;
+          const opacity = isMajor ? majorOpacity : minorOpacity;
+          el.style.opacity = opacity.toFixed(3);
+          el.style.display = opacity < 0.03 ? 'none' : 'block';
+        });
+      };
+      map.on('zoomend', updateLabelOpacity);
+      setTimeout(updateLabelOpacity, 0);
 
       map.on('click', (e: any) => {
         if (disabledRef.current) return;
