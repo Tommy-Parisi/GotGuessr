@@ -113,12 +113,13 @@ function gotMapDistance(x1: number, y1: number, x2: number, y2: number) {
   return Math.round(Math.sqrt(dx * dx + dy * dy));
 }
 
-function calcGotScore(dist: number) {
-  if (dist < 25) return 5000;
-  if (dist < 100) return Math.round(5000 - (dist - 25) * 40);
-  if (dist < 250) return Math.round(2000 - (dist - 100) * 8);
-  if (dist < 500) return Math.round(800 - (dist - 250) * 2.4);
-  return Math.max(0, Math.round(200 - (dist - 500) * 0.4));
+const GLOBAL_MAX_DISTANCE = Math.round(Math.sqrt((1000 ** 2) + (1000 ** 2)));
+const SCORE_CURVE_EXPONENT = 1.2; // Slight reward bias toward closer guesses.
+
+function calcGotScore(dist: number, maxDist: number) {
+  if (maxDist <= 0) return 5000;
+  const ratio = Math.max(0, Math.min(1, dist / maxDist));
+  return Math.round(5000 * (1 - Math.pow(ratio, SCORE_CURVE_EXPONENT)));
 }
 
 function getRank(score: number) {
@@ -1137,7 +1138,7 @@ export default function App() {
     if (!s.pendingGuess || s.phase !== 'playing') return s;
     const loc  = s.locations[s.round];
     const dist = gotMapDistance(s.pendingGuess.x, s.pendingGuess.y, loc.gotX, loc.gotY);
-    const pts  = calcGotScore(dist);
+    const pts  = calcGotScore(dist, GLOBAL_MAX_DISTANCE);
     const result: RoundResult = {
       location: loc, guessX: s.pendingGuess.x, guessY: s.pendingGuess.y,
       distanceLeagues: dist, points: pts,
