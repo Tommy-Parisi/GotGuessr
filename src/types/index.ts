@@ -14,8 +14,8 @@ export interface Location {
   description: string;
   lat: number;
   lng: number;
-  gotX: number; // x position on GoT world map SVG (0–1000)
-  gotY: number; // y position on GoT world map SVG (0–560)
+  gotX: number; // x fraction on Quartermaester map (0–1, left→right)
+  gotY: number; // y fraction on Quartermaester map (0–1, top→bottom)
   house: House;
   images: string[];
 }

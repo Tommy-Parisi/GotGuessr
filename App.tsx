@@ -55,49 +55,49 @@ const ALL_LOCATIONS: Location[] = [
   {
     id: 1, name: 'Dubrovnik, Croatia', gotName: "King's Landing",
     description: "Seat of the Iron Throne, capital of the Seven Kingdoms. The city's ancient walls echo with the cries of ravens and the clash of swords.",
-    gotX: 218, gotY: 318, house: 'Lannister',
+    gotX: 0.218, gotY: 0.568, house: 'Lannister',
     images: [px(2225439)],
   },
   {
     id: 2, name: 'Mdina, Malta', gotName: "King's Landing (S1)",
     description: "The Silent City — an ancient walled hilltop used in the earliest days of the show, before Dubrovnik became the throne's permanent home.",
-    gotX: 205, gotY: 308, house: 'Baratheon',
+    gotX: 0.205, gotY: 0.550, house: 'Baratheon',
     images: [px(4388158)],
   },
   {
     id: 3, name: 'Thingvellir, Iceland', gotName: 'The Vale / Beyond the Wall',
     description: "A volcanic rift valley standing in for the frozen North. The land itself seems to crack open, as if the gods tore it asunder.",
-    gotX: 238, gotY: 252, house: 'Stark',
+    gotX: 0.238, gotY: 0.450, house: 'Stark',
     images: [px(1633351)],
   },
   {
     id: 4, name: 'Ballintoy, Northern Ireland', gotName: 'The Iron Islands',
     description: "Rugged basalt coast — seat of House Greyjoy. Here the sea is never still, and the ironborn take what is theirs with iron and blood.",
-    gotX: 68, gotY: 264, house: 'Greyjoy',
+    gotX: 0.068, gotY: 0.471, house: 'Greyjoy',
     images: [px(3800109)],
   },
   {
     id: 5, name: 'Seville, Spain', gotName: 'Dorne / Water Gardens',
     description: "The sun-drenched Alcázar of Seville — seat of House Martell. In Dorne the sun is a weapon and the water a mercy.",
-    gotX: 175, gotY: 448, house: 'Martell',
+    gotX: 0.175, gotY: 0.800, house: 'Martell',
     images: [px(1388030)],
   },
   {
     id: 6, name: 'Vatnajökull, Iceland', gotName: 'Beyond the Wall',
     description: "Europe's largest glacier — the eternal frozen wilderness where the dead walk and the living dare not follow.",
-    gotX: 152, gotY: 78, house: "Night's Watch",
+    gotX: 0.152, gotY: 0.139, house: "Night's Watch",
     images: [px(1433052)],
   },
   {
     id: 7, name: 'Essaouira, Morocco', gotName: 'Astapor',
     description: "The red city of Astapor, where Daenerys Targaryen purchased the Unsullied and set fire to a slaver's world.",
-    gotX: 555, gotY: 415, house: 'Targaryen',
+    gotX: 0.555, gotY: 0.741, house: 'Targaryen',
     images: [px(2549018)],
   },
   {
     id: 8, name: 'Dark Hedges, N. Ireland', gotName: 'The Kingsroad',
     description: "An eerie tunnel of ancient beech trees — the Kingsroad north, where Arya Stark fled south disguised among the condemned.",
-    gotX: 162, gotY: 215, house: 'Stark',
+    gotX: 0.162, gotY: 0.384, house: 'Stark',
     images: [px(1563356)],
   },
 ];
@@ -105,7 +105,10 @@ const ALL_LOCATIONS: Location[] = [
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function gotMapDistance(x1: number, y1: number, x2: number, y2: number) {
-  return Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2));
+  // Coordinates are 0-1 fractions; scale to 1000×560 pixel space for scoring
+  const dx = (x2 - x1) * 1000;
+  const dy = (y2 - y1) * 560;
+  return Math.round(Math.sqrt(dx * dx + dy * dy));
 }
 
 function calcGotScore(dist: number) {
@@ -137,10 +140,19 @@ function makeInitialState(): GameState {
 
 function useGlobalCSS() {
   useEffect(() => {
+    if (typeof window === 'undefined') return; // SSR safety
+
+    // Google Fonts
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700&family=IM+Fell+English:ital@0;1&display=swap';
     document.head.appendChild(link);
+
+    // Leaflet CSS
+    const leafletLink = document.createElement('link');
+    leafletLink.rel = 'stylesheet';
+    leafletLink.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(leafletLink);
 
     const style = document.createElement('style');
     style.textContent = `
@@ -181,6 +193,8 @@ function useGlobalCSS() {
 
       /* ── Map overlay (GeoGuessr-style) ── */
       .map-overlay {
+        --map-aspect: 1; /* Quartermaester tile world is square (2^z by 2^z tiles) */
+        --map-frame-extra: 8px; /* room for ornamental border/frame */
         position: absolute;
         bottom: 22px;
         right: 22px;
@@ -201,19 +215,19 @@ function useGlobalCSS() {
       }
       .map-overlay.collapsed {
         width: 340px;
-        height: 213px;
+        height: calc((340px / var(--map-aspect)) + var(--map-frame-extra));
       }
       .map-overlay.expanded {
-        width: min(740px, 74vw);
-        height: min(480px, 64vh);
+        width: min(700px, 70vw);
+        height: calc((min(700px, 70vw) / var(--map-aspect)) + var(--map-frame-extra));
         box-shadow:
           0 0 0 1px #5a3f18,
           0 16px 60px rgba(0,0,0,0.9),
           inset 0 0 0 1px rgba(212,168,64,0.22);
       }
       .map-overlay.result {
-        width: min(740px, 74vw);
-        height: min(480px, 64vh);
+        width: min(700px, 70vw);
+        height: calc((min(700px, 70vw) / var(--map-aspect)) + var(--map-frame-extra));
         cursor: default;
         box-shadow:
           0 0 0 1px #7a5a28,
@@ -232,7 +246,7 @@ function useGlobalCSS() {
         bottom: 12px;
         left: 50%;
         transform: translateX(-50%);
-        z-index: 101;
+        z-index: 1200;
         font-family: 'Cinzel', serif;
         letter-spacing: 2.5px;
         font-size: 10px;
@@ -280,36 +294,84 @@ function useGlobalCSS() {
         height: 1px;
         background: linear-gradient(to right, transparent, #5a3a14, transparent);
       }
+
+      /* ── Leaflet map customization ── */
+      .leaflet-container {
+        background: #0a0a0a !important;
+        font-family: 'Cinzel', serif;
+      }
+      .leaflet-control-layers, .leaflet-control-zoom, .leaflet-control-attribution,
+      .leaflet-bar, .leaflet-control { display: none !important; }
+      .leaflet-top, .leaflet-bottom { display: none !important; }
     `;
     document.head.appendChild(style);
-    return () => { document.head.removeChild(link); document.head.removeChild(style); };
+    
+    return () => {
+      try {
+        document.head.removeChild(link);
+        document.head.removeChild(leafletLink);
+        document.head.removeChild(style);
+      } catch (e) {
+        // Cleanup safety
+      }
+    };
   }, []);
 }
 
-// ─── WorldMap (parchment cartographic style) ─────────────────────────────────
+// ─── Quartermaester Tile Encoding (Keyhole Quadtree) ────────────────────────
 
-const MAP_W = 1000;
-const MAP_H = 560;
+const EMPTY_TILE =
+  'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
-// Palette — aged atlas / "Lands of Ice and Fire" feel
-const C = {
-  sea:       '#8fb5cc',   // muted atlas blue
-  seaDeep:   '#6a94b0',   // deeper water
-  land:      '#d4b878',   // aged parchment ochre
-  landAlt:   '#caa660',   // slightly darker land
-  dorne:     '#c8a050',   // sun-baked ochre
-  sothoryos: '#b89050',   // dark exotic ochre
-  shore:     '#4a2e0e',   // dark brown coastline ink
-  ink:       '#2e1a08',   // main ink colour
-  inkMed:    '#4a3018',   // medium ink
-  inkLight:  '#7a5a30',   // light ink for borders
-  wall:      '#e8e8e0',   // pale stone
-  wallStroke:'#a0b0a0',
-  mountain:  '#7a5a30',   // mountain ink
-  snow:      '#e8e4d8',   // snowy areas
-  forest:    '#7a8a48',   // subtle forest tint
-  parchBg:   '#d4b878',   // map background (parchment)
+const MAP_ZOOM_SETTINGS = {
+  initialZoom: 4.2,
+  minZoom: 2.5,
+  maxZoom: 5.3,
+  // Keep overall speed while using finer steps for smoother motion.
+  zoomSnap: 0.05,
+  zoomDelta: 0.35,
+  wheelPxPerZoomLevel: 6,
+  wheelDebounceTime: 0,
 };
+
+// Mirrors quartermaester.info/ASoIaF-objects.js getTileCode(coord, zoom).
+function getTileCode(coord: { x: number; y: number }, z: number): string {
+  let range = Math.pow(2, z);
+  let xx = coord.x;
+  let yy = coord.y;
+  let code = "t";
+  for (let i = 0; i < z; i++) {
+    range = range / 2;
+    if (yy < range) {
+      if (xx < range) {
+        code += "q";  // top-left
+      } else {
+        code += "r";  // top-right
+        xx -= range;
+      }
+    } else {
+      if (xx < range) {
+        code += "t";  // bottom-left
+        yy -= range;
+      } else {
+        code += "s";  // bottom-right
+        xx -= range;
+        yy -= range;
+      }
+    }
+  }
+  return code;
+}
+
+// Mirrors quartermaester.info/ASoIaF-objects.js isOutsideTileRange(coord, zoom).
+function isOutsideTileRange(coord: { x: number; y: number }, zoom: number): boolean {
+  const tileRange = 1 << zoom;
+  if (coord.x < 0 || coord.x >= tileRange) return true;
+  if (coord.y < 0 || coord.y >= tileRange) return true;
+  return false;
+}
+
+// ─── WorldMap (Leaflet-based custom map) ───────────────────────────────────
 
 function WorldMap({ onGuess, pendingGuess, result, disabled }: {
   onGuess: (x: number, y: number) => void;
@@ -317,535 +379,193 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
   result: RoundResult | null;
   disabled: boolean;
 }) {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
-  const movedRef = useRef(false);
-  // Keep latest zoom/pan accessible inside the non-reactive wheel handler
-  const stRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
-  stRef.current = { zoom, pan };
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<any>(null); // Use 'any' since L is imported dynamically
+  const disabledRef = useRef(disabled);
+  const onGuessRef = useRef(onGuess);
 
-  // Derived viewBox values
-  const vw = MAP_W / zoom;
-  const vh = MAP_H / zoom;
-  const vx = Math.max(0, Math.min(MAP_W - vw, pan.x));
-  const vy = Math.max(0, Math.min(MAP_H - vh, pan.y));
-
-  // Returns the pixel rect of the actual SVG content (accounts for letterboxing
-  // from preserveAspectRatio="xMidYMid meet"). The viewBox always has ratio
-  // MAP_W:MAP_H, but the container may differ, leaving empty bars on sides or top/bottom.
-  const getSvgContentRect = (el: SVGSVGElement, cvw: number, cvh: number) => {
-    const rect = el.getBoundingClientRect();
-    const svgAspect = cvw / cvh;
-    const containerAspect = rect.width / rect.height;
-    let cw: number, ch: number, ox: number, oy: number;
-    if (containerAspect > svgAspect) {
-      ch = rect.height; cw = rect.height * svgAspect;
-      ox = (rect.width - cw) / 2; oy = 0;
-    } else {
-      cw = rect.width; ch = rect.width / svgAspect;
-      ox = 0; oy = (rect.height - ch) / 2;
-    }
-    return { left: rect.left + ox, top: rect.top + oy, width: cw, height: ch };
-  };
-
-  // Non-passive wheel listener so we can call preventDefault (stops page scroll)
-  // Handles both scroll-wheel zoom and trackpad pinch (ctrlKey=true)
   useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const { zoom: z, pan: p } = stRef.current;
-      const curVW = MAP_W / z;
-      const curVH = MAP_H / z;
-      const cr = getSvgContentRect(el as SVGSVGElement, curVW, curVH);
-      const cx = (e.clientX - cr.left) / cr.width;
-      const cy = (e.clientY - cr.top)  / cr.height;
-      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
-      const nz = Math.max(1, Math.min(12, z * factor));
-      const nvw = MAP_W / nz;
-      const nvh = MAP_H / nz;
-      setZoom(nz);
-      setPan({
-        x: Math.max(0, Math.min(MAP_W - nvw, p.x + curVW * cx - nvw * cx)),
-        y: Math.max(0, Math.min(MAP_H - nvh, p.y + curVH * cy - nvh * cy)),
+    disabledRef.current = disabled;
+    onGuessRef.current = onGuess;
+  }, [disabled, onGuess]);
+
+  // Initialize Leaflet map
+  useEffect(() => {
+    if (!mapRef.current || leafletMapRef.current) return;
+
+    // Dynamically import Leaflet only on client
+    import('leaflet').then((module) => {
+      const L = module.default;
+
+      const QuartermaesterTileLayer = (L.TileLayer as any).extend({
+        getTileUrl(coords: any) {
+          const coord = { x: coords.x, y: coords.y };
+          const zoom = coords.z;
+          if (isOutsideTileRange(coord, zoom)) return EMPTY_TILE;
+          const code = getTileCode(coord, zoom);
+          return `https://quartermaester.info/nat/${code}.jpg`;
+        },
       });
+
+      // Quartermaester uses Google Maps' spherical mercator tile grid.
+      const map = L.map(mapRef.current!, {
+        center: [0, -105],
+        zoom: MAP_ZOOM_SETTINGS.initialZoom,
+        minZoom: MAP_ZOOM_SETTINGS.minZoom,
+        maxZoom: MAP_ZOOM_SETTINGS.maxZoom,
+        zoomSnap: MAP_ZOOM_SETTINGS.zoomSnap,
+        zoomDelta: MAP_ZOOM_SETTINGS.zoomDelta,
+        wheelPxPerZoomLevel: MAP_ZOOM_SETTINGS.wheelPxPerZoomLevel,
+        wheelDebounceTime: MAP_ZOOM_SETTINGS.wheelDebounceTime,
+        preferCanvas: true,
+        fadeAnimation: true,
+        zoomAnimation: true,
+        zoomAnimationThreshold: 8,
+        zoomControl: false,
+        attributionControl: false,
+        dragging: true,
+        touchZoom: true,
+        scrollWheelZoom: true,
+        doubleClickZoom: true,
+        worldCopyJump: false,
+        maxBounds: L.latLngBounds([[-85, -180], [85, 180]]),
+        maxBoundsViscosity: 1.0,
+      });
+
+      const tileLayer = new QuartermaesterTileLayer('', {
+        tileSize: 256,
+        noWrap: true,
+        bounds: L.latLngBounds([[-85, -180], [85, 180]]),
+        minZoom: MAP_ZOOM_SETTINGS.minZoom,
+        maxZoom: MAP_ZOOM_SETTINGS.maxZoom,
+        maxNativeZoom: 5,
+        updateWhenZooming: true,
+        updateInterval: 32,
+        keepBuffer: 5,
+      });
+      tileLayer.addTo(map);
+
+      map.on('click', (e: any) => {
+        if (disabledRef.current) return;
+        const size = map.getSize();
+        if (!size?.x || !size?.y) return;
+        const x = e.containerPoint.x / size.x;
+        const y = e.containerPoint.y / size.y;
+        onGuessRef.current(x, y);
+      });
+
+      leafletMapRef.current = map;
+      
+      // Invalidate size after a brief delay to ensure container is ready
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100);
+    });
+
+    return () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+      }
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Reset zoom when a new round starts (result cleared)
+  // Re-invalidate map size when result changes (UI expands/collapses)
   useEffect(() => {
-    if (!result) { setZoom(1); setPan({ x: 0, y: 0 }); }
+    if (leafletMapRef.current) {
+      setTimeout(() => {
+        leafletMapRef.current.invalidateSize();
+      }, 300);
+    }
   }, [result]);
 
-  // Drag-to-pan
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
-    movedRef.current = false;
-  };
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.sx;
-    const dy = e.clientY - dragRef.current.sy;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) movedRef.current = true;
-    const el = svgRef.current;
-    if (!el) return;
-    const cr = getSvgContentRect(el, vw, vh);
-    setPan({
-      x: Math.max(0, Math.min(MAP_W - vw, dragRef.current.px - (dx / cr.width)  * vw)),
-      y: Math.max(0, Math.min(MAP_H - vh, dragRef.current.py - (dy / cr.height) * vh)),
+  // Keep Leaflet synced with collapsed/expanded container transitions.
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const el = mapRef.current;
+    const observer = new ResizeObserver(() => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.invalidateSize();
+      }
     });
-  };
-  const onMouseUp = () => { dragRef.current = null; };
-
-  // Double-click resets zoom
-  const onDblClick = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
-
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (disabled || movedRef.current) return;
-    const cr = getSvgContentRect(e.currentTarget, vw, vh);
-    onGuess(
-      vx + ((e.clientX - cr.left) / cr.width)  * vw,
-      vy + ((e.clientY - cr.top)  / cr.height) * vh,
-    );
-  };
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const gp = pendingGuess ?? null;
   const ap = result ? { x: result.location.gotX, y: result.location.gotY } : null;
   const rp = result ? { x: result.guessX, y: result.guessY } : null;
-  const cursorStyle = disabled ? 'default' : dragRef.current ? 'grabbing' : zoom > 1.05 ? 'grab' : 'crosshair';
+  const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
 
   return (
     // @ts-ignore
-    <svg
-      ref={svgRef}
-      viewBox={`${vx} ${vy} ${vw} ${vh}`}
-      style={{ width: '100%', height: '100%', display: 'block', cursor: cursorStyle, userSelect: 'none' } as React.CSSProperties}
-      onClick={handleClick}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-      onDoubleClick={onDblClick}
-    >
-      <defs>
-        {/* Parchment noise texture */}
-        <filter id="parchment" x="0%" y="0%" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" seed="2" result="noise"/>
-          <feColorMatrix type="saturate" values="0" in="noise" result="grayNoise"/>
-          <feBlend in="SourceGraphic" in2="grayNoise" mode="multiply" result="blended"/>
-          <feComposite in="blended" in2="SourceGraphic" operator="in"/>
-        </filter>
-        {/* Soft glow for pins */}
-        <filter id="pinGlow" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="3" result="blur"/>
-          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-        {/* Ocean gradient */}
-        <radialGradient id="seaGrad" cx="45%" cy="40%" r="65%">
-          <stop offset="0%"   stopColor="#9dc5d8"/>
-          <stop offset="100%" stopColor="#5a8aaa"/>
-        </radialGradient>
-        {/* Parchment land gradient */}
-        <linearGradient id="landGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%"   stopColor="#dcc080"/>
-          <stop offset="100%" stopColor="#c8a860"/>
-        </linearGradient>
-        {/* Aged border gradient */}
-        <linearGradient id="borderGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%"   stopColor="#8a6030"/>
-          <stop offset="50%"  stopColor="#6a4820"/>
-          <stop offset="100%" stopColor="#8a6030"/>
-        </linearGradient>
-        {/* Sea hatch pattern */}
-        <pattern id="seaHatch" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="8" x2="8" y2="0" stroke="#7aa8c0" strokeWidth="0.4" opacity="0.5"/>
-        </pattern>
-      </defs>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' } as React.CSSProperties}>
 
-      {/* ── OCEAN BASE ── */}
-      <rect width={MAP_W} height={MAP_H} fill="url(#seaGrad)"/>
-      <rect width={MAP_W} height={MAP_H} fill="url(#seaHatch)" opacity="0.4"/>
-
-      {/* Subtle latitude lines */}
-      {[...Array(8)].map((_,i) => (
-        <line key={`lat${i}`} x1="0" y1={i*74} x2={MAP_W} y2={i*74}
-          stroke="#6a9ab8" strokeWidth="0.4" opacity="0.5" strokeDasharray="4,8"/>
-      ))}
-      {[...Array(14)].map((_,i) => (
-        <line key={`lon${i}`} x1={i*74} y1="0" x2={i*74} y2={MAP_H}
-          stroke="#6a9ab8" strokeWidth="0.4" opacity="0.5" strokeDasharray="4,8"/>
-      ))}
-
-      {/* ── WESTEROS — detailed coastline ── */}
-      {/*
-        Clockwise from NW. Key features included:
-        The Bite, The Fingers (Vale), Crackclaw Point,
-        Blackwater Bay, Cape Wrath, Dorne peninsula,
-        western coast with Westerlands bays, The Neck.
-      */}
-      <path
-        d={`
-          M 84,72
-          L 91,65 L 104,59 L 118,57 L 134,56 L 150,57
-          L 165,59 L 180,62 L 196,64 L 210,67 L 220,71 L 227,78
-          L 228,90 L 226,105 L 225,118 L 225,130
-          L 231,142 L 237,155 L 241,167 L 244,178
-          L 246,189 L 242,199 L 245,209
-          L 254,215 L 261,219 L 266,226 L 263,233
-          L 257,237 L 265,243 L 271,251 L 267,259 L 259,262
-          L 264,272 L 271,281 L 269,291
-          L 262,299 L 253,307 L 242,312 L 231,315
-          L 246,322 L 254,332 L 252,343 L 247,355
-          L 243,366 L 254,373 L 259,385 L 251,396
-          L 243,407 L 237,418 L 228,430
-          L 216,440 L 203,450 L 193,457 L 184,464
-          L 175,469 L 165,470 L 154,467 L 144,459
-          L 135,447 L 126,430 L 116,408
-          L 106,382 L 97,354 L 89,326 L 83,300
-          L 79,273 L 77,248 L 77,225
-          L 74,210 L 71,194 L 70,178
-          L 68,161 L 67,147 L 67,130
-          L 67,116 L 69,101 L 73,87 L 78,78 L 84,72 Z
-        `}
-        fill="url(#landGrad)" stroke={C.shore} strokeWidth="1.8" strokeLinejoin="round"
-      />
-      {/* Snow / Beyond the Wall tint */}
-      <path
-        d="M 84,72 L 227,78 L 225,130 L 67,130 L 67,116 L 69,101 L 73,87 L 78,78 Z"
-        fill={C.snow} opacity="0.5" stroke="none"
-      />
-      {/* Dorne — distinct warmer ochre peninsula */}
-      <path
-        d={`
-          M 135,447 L 152,438 L 165,434 L 178,436
-          L 192,444 L 202,453 L 197,463 L 186,469
-          L 175,470 L 163,467 L 152,459 L 144,450 Z
-        `}
-        fill={C.dorne} stroke={C.shore} strokeWidth="1"
-      />
-      {/* Islands */}
-      <ellipse cx="258" cy="330" rx="10" ry="6.5" fill={C.landAlt} stroke={C.shore} strokeWidth="1"/>
-      <ellipse cx="240" cy="388" rx="5" ry="8.5" fill={C.landAlt} stroke={C.shore} strokeWidth="0.9"/>
-      <ellipse cx="232" cy="217" rx="7" ry="4.5" fill={C.landAlt} stroke={C.shore} strokeWidth="0.8"/>
-      <ellipse cx="246" cy="221" rx="4.5" ry="3" fill={C.landAlt} stroke={C.shore} strokeWidth="0.7"/>
-
-      {/* ── IRON ISLANDS — scattered archipelago ── */}
-      <path d="M 56,254 L 73,249 L 79,261 L 67,269 L 55,262 Z" fill={C.landAlt} stroke={C.shore} strokeWidth="1.1"/>
-      <path d="M 52,269 L 66,265 L 71,277 L 59,282 L 50,274 Z" fill={C.landAlt} stroke={C.shore} strokeWidth="1"/>
-      <path d="M 61,244 L 73,241 L 76,251 L 65,254 L 58,248 Z" fill={C.landAlt} stroke={C.shore} strokeWidth="0.9"/>
-      <path d="M 48,279 L 61,276 L 64,287 L 51,291 L 46,283 Z" fill={C.landAlt} stroke={C.shore} strokeWidth="0.9"/>
-      <ellipse cx="70" cy="248" rx="4" ry="3" fill={C.landAlt} stroke={C.shore} strokeWidth="0.7"/>
-
-      {/* ── THE WALL ── */}
-      <line x1="67" y1="130" x2="225" y2="130" stroke={C.wallStroke} strokeWidth="6" strokeLinecap="square"/>
-      <line x1="67" y1="130" x2="225" y2="130" stroke={C.wall} strokeWidth="2.5" strokeLinecap="square"/>
-      {[78,100,122,145,168,192,215].map(x => (
-        <rect key={x} x={x-4} y={123} width={9} height={13} fill={C.wall} stroke={C.wallStroke} strokeWidth="0.8"/>
-      ))}
-
-      {/* ── ESSOS — detailed coastline ── */}
-      {/*
-        Clockwise from NW peninsula tip. Features:
-        Free Cities jagged coast, Slaver's Bay, Jade Sea coast,
-        eastern shadow lands coast.
-      */}
-      <path
-        d={`
-          M 330,148
-          L 360,142 L 390,136 L 418,131 L 448,127
-          L 480,124 L 514,120 L 548,117 L 582,115
-          L 618,113 L 656,111 L 696,109 L 736,108
-          L 780,107 L 824,107 L 868,108 L 912,109
-          L 944,110 L 960,112
-          L 960,155 L 960,210 L 960,270 L 960,330 L 960,390
-          L 957,410 L 946,428 L 928,440
-          L 904,449 L 876,454 L 845,452 L 815,449
-          L 789,443 L 764,445 L 740,448 L 716,455
-          L 692,460 L 668,461 L 646,458 L 624,453
-          L 602,449 L 580,450 L 558,447 L 536,444
-          L 514,441 L 490,439 L 466,436 L 442,432
-          L 418,426 L 396,417 L 374,406 L 354,394
-          L 339,381 L 329,365 L 322,347 L 318,328
-          L 316,308 L 317,286 L 319,265 L 323,244
-          L 326,224 L 328,204 L 329,182 L 330,162 Z
-        `}
-        fill="url(#landGrad)" stroke={C.shore} strokeWidth="1.8" strokeLinejoin="round"
-      />
-      {/* Slaver's Bay — proper enclosed bay shape */}
-      <path
-        d={`
-          M 533,385 L 548,374 L 568,368 L 592,366
-          L 618,370 L 636,382 L 638,398 L 628,412
-          L 608,421 L 584,424 L 560,420 L 540,410
-          L 531,397 Z
-        `}
-        fill={C.seaDeep} stroke={C.shore} strokeWidth="0.9"
-      />
-      {/* Gulf of Grief / southern Essos bays */}
-      <path
-        d="M 432,418 L 456,412 L 470,420 L 462,432 L 442,434 L 430,426 Z"
-        fill={C.seaDeep} stroke={C.shore} strokeWidth="0.7" opacity="0.85"
-      />
-      {/* Red Waste tint */}
-      <ellipse cx="782" cy="290" rx="115" ry="80" fill="#a86820" opacity="0.18"/>
-      {/* Dothraki grassland tint */}
-      <ellipse cx="562" cy="252" rx="125" ry="68" fill="#7a7028" opacity="0.13"/>
-
-      {/* ── SOTHORYOS — northern coast visible ── */}
-      <path
-        d={`
-          M 385,524 L 420,516 L 460,512 L 504,510
-          L 548,511 L 596,513 L 644,514 L 696,513
-          L 748,511 L 800,510 L 852,511 L 900,513
-          L 940,514 L 960,513
-          L 960,560 L 385,560 Z
-        `}
-        fill={C.sothoryos} stroke={C.shore} strokeWidth="1"
+      {/* Leaflet map container */}
+      {/* @ts-ignore */}
+      <div
+        ref={mapRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          cursor: disabled ? 'default' : 'crosshair',
+        } as React.CSSProperties}
       />
 
-      {/* ── KINGDOM BORDER LINES (dashed ink) ── */}
-      {/* North/South boundary ~ The Neck */}
-      <line x1="72" y1="210" x2="262" y2="215" stroke={C.inkMed} strokeWidth="0.8" strokeDasharray="4,5" opacity="0.55"/>
-      {/* Vale border */}
-      <line x1="220" y1="215" x2="262" y2="215" stroke={C.inkMed} strokeWidth="0.8" strokeDasharray="4,5" opacity="0.55"/>
-      {/* Dorne boundary */}
-      <line x1="130" y1="420" x2="208" y2="440" stroke={C.inkMed} strokeWidth="0.8" strokeDasharray="4,5" opacity="0.55"/>
-
-      {/* ── MOUNTAINS ── (ink triangle symbols, medieval style) */}
-      {/* Northern mountains */}
-      {[
-        [100,154],[118,150],[136,156],[152,152],
-      ].map(([x,y],i) => (
-        <polygon key={`nm${i}`}
-          points={`${x},${y-10} ${x+9},${y+2} ${x-9},${y+2}`}
-          fill={C.mountain} stroke={C.mountain} strokeWidth="0.3" opacity="0.85"/>
-      ))}
-      {/* Mountains of the Moon (Vale) */}
-      {[
-        [240,234],[253,228],[266,234],[258,240],
-      ].map(([x,y],i) => (
-        <polygon key={`vm${i}`}
-          points={`${x},${y-12} ${x+10},${y+2} ${x-10},${y+2}`}
-          fill={C.mountain} stroke={C.mountain} strokeWidth="0.3" opacity="0.85"/>
-      ))}
-      {/* Red Mountains (Dorne border) */}
-      {[
-        [142,430],[155,426],[168,422],[180,426],[192,430],
-      ].map(([x,y],i) => (
-        <polygon key={`dm${i}`}
-          points={`${x},${y-9} ${x+8},${y+2} ${x-8},${y+2}`}
-          fill="#8a5820" stroke="#6a4010" strokeWidth="0.3" opacity="0.8"/>
-      ))}
-      {/* Bone Mountains (Essos) */}
-      {[652,668,684,700,716,732,748].map((x,i) => (
-        <polygon key={`bm${i}`}
-          points={`${x},${225-i*3} ${x+13},${250} ${x-13},${250}`}
-          fill={C.mountain} stroke={C.mountain} strokeWidth="0.3" opacity="0.88"/>
-      ))}
-      {[660,676,692,708,724,740].map((x,i) => (
-        <polygon key={`bm2${i}`}
-          points={`${x},${238-i*2} ${x+10},${254} ${x-10},${254}`}
-          fill={C.mountain} stroke={C.mountain} strokeWidth="0.3" opacity="0.75"/>
-      ))}
-      {/* Shadow Lands mountains */}
-      {[895,910,925,940,955].map((x,i) => (
-        <polygon key={`sm${i}`}
-          points={`${x},${340-i*6} ${x+11},${365} ${x-11},${365}`}
-          fill="#6a5020" stroke={C.mountain} strokeWidth="0.3" opacity="0.7"/>
-      ))}
-
-      {/* ── FOREST PATCHES (small ink clusters) ── */}
-      {[
-        [142,185],[155,182],[148,195],
-        [112,358],[124,362],[118,368],
-        [192,295],[200,288],[196,300],
-      ].map(([x,y],i) => (
-        <circle key={`f${i}`} cx={x} cy={y} r="5.5" fill={C.forest} opacity="0.22"/>
-      ))}
-
-      {/* ── REGION LABELS ── */}
-      {([
-        { t: 'BEYOND THE WALL', x: 152, y: 90,  s: 10, c: '#4a6878', it: true  },
-        { t: 'THE NORTH',       x: 148, y: 178, s: 11, c: C.ink           },
-        { t: 'THE GIFT',        x: 148, y: 153, s:  7, c: C.inkMed, it: true },
-        { t: 'THE VALE',        x: 248, y: 242, s:  9, c: C.ink           },
-        { t: 'THE RIVERLANDS',  x: 174, y: 262, s:  8, c: C.ink           },
-        { t: 'THE WESTERLANDS', x:  90, y: 290, s:  8, c: C.ink           },
-        { t: 'THE CROWNLANDS',  x: 220, y: 298, s:  7, c: C.inkMed, it: true },
-        { t: 'THE STORMLANDS',  x: 234, y: 355, s:  8, c: C.ink           },
-        { t: 'THE REACH',       x: 126, y: 368, s: 10, c: C.ink           },
-        { t: 'DORNE',           x: 176, y: 450, s: 12, c: '#6a3808'       },
-        { t: 'THE NARROW SEA',  x: 296, y: 292, s:  9, c: '#3a5e78', it: true },
-        { t: 'THE SHIVERING SEA',x:152, y:  46, s:  9, c: '#3a5e78', it: true },
-        { t: 'FREE CITIES',     x: 368, y: 210, s: 10, c: C.ink           },
-        { t: 'THE DOTHRAKI SEA',x: 562, y: 265, s: 11, c: '#5a4820', it: true },
-        { t: 'THE RED WASTE',   x: 782, y: 312, s: 10, c: '#6a3810', it: true },
-        { t: 'SOTHORYOS',       x: 640, y: 536, s: 11, c: '#4a3810', it: true },
-        { t: 'THE JADE SEA',    x: 858, y: 452, s:  9, c: '#3a5e78', it: true },
-        { t: 'SHADOW LANDS',    x: 920, y: 350, s:  8, c: '#4a3818', it: true },
-      ] as Array<{ t: string; x: number; y: number; s: number; c: string; it?: boolean }>)
-        .map(({ t, x, y, s, c, it }) => (
-          <text key={t} x={x} y={y} textAnchor="middle" fontSize={s} fill={c}
-            fontFamily="'Cinzel', serif" letterSpacing="1.2"
-            fontStyle={it ? 'italic' : 'normal'}
-            style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>
-            {t}
-          </text>
-        ))
-      }
-
-      {/* THE WALL label */}
-      <text x="150" y="124" textAnchor="middle" fontSize="8" fill="#7a9a7a"
-        fontFamily="'Cinzel', serif" letterSpacing="3"
-        style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>
-        THE WALL
-      </text>
-
-      {/* ── CITY DOTS + LABELS ── */}
-      {([
-        { t: "KING'S LANDING", x: 222, y: 322, c: '#8a5810', bold: true },
-        { t: 'DRAGONSTONE',    x: 261, y: 343, c: '#7a2818' },
-        { t: 'WINTERFELL',     x: 158, y: 194, c: '#3a5878', bold: true },
-        { t: 'CASTLE BLACK',   x: 155, y: 144, c: '#4a5848' },
-        { t: 'THE EYRIE',      x: 251, y: 258, c: '#485870' },
-        { t: 'CASTERLY ROCK',  x:  90, y: 307, c: '#8a5810' },
-        { t: 'HIGHGARDEN',     x: 125, y: 378, c: '#4a6828' },
-        { t: 'SUNSPEAR',       x: 184, y: 462, c: '#7a3808' },
-        { t: 'PYKE',           x:  57, y: 282, c: '#486070' },
-        { t: 'OLDTOWN',        x: 112, y: 410, c: '#5a4818' },
-        { t: 'HARRENHAL',      x: 190, y: 275, c: '#5a4830' },
-        { t: 'BRAAVOS',        x: 358, y: 186, c: '#6a5820' },
-        { t: 'PENTOS',         x: 336, y: 257, c: '#6a5820' },
-        { t: 'LYS',            x: 345, y: 325, c: '#6a5820' },
-        { t: 'VOLANTIS',       x: 437, y: 384, c: '#6a5820' },
-        { t: 'ASTAPOR',        x: 557, y: 426, c: '#7a2818', bold: true },
-        { t: 'YUNKAI',         x: 583, y: 411, c: '#6a5020' },
-        { t: 'MEEREEN',        x: 606, y: 394, c: '#8a5810', bold: true },
-        { t: 'VAES DOTHRAK',   x: 572, y: 235, c: '#6a4818' },
-        { t: 'QARTH',          x: 696, y: 408, c: '#6a5020' },
-        { t: 'ASSHAI',         x: 924, y: 395, c: '#4a3828' },
-      ] as Array<{ t: string; x: number; y: number; c: string; bold?: boolean }>)
-        .map(({ t, x, y, c, bold }) => (
-          <g key={t}>
-            <circle cx={x} cy={y-11} r="2.8" fill={c} opacity="0.9"/>
-            <text x={x} y={y} textAnchor="middle" fontSize="7.5" fill={c}
-              fontFamily="'Cinzel', serif" letterSpacing="0.5"
-              fontWeight={bold ? '700' : '400'}
-              style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>
-              {t}
-            </text>
-          </g>
-        ))
-      }
-
-      {/* ── DECORATIVE MAP BORDER ── */}
-      <rect x="3" y="3" width={MAP_W-6} height={MAP_H-6}
-        fill="none" stroke="#7a5820" strokeWidth="2.5" opacity="0.7"/>
-      <rect x="7" y="7" width={MAP_W-14} height={MAP_H-14}
-        fill="none" stroke="#8a6830" strokeWidth="1" opacity="0.4"/>
-      {/* Corner ornaments */}
-      {[[12,12],[MAP_W-12,12],[12,MAP_H-12],[MAP_W-12,MAP_H-12]].map(([cx,cy],i) => (
-        <g key={`corner${i}`} transform={`translate(${cx},${cy})`}>
-          <circle r="4" fill="none" stroke="#7a5820" strokeWidth="1.2" opacity="0.7"/>
-          <circle r="1.5" fill="#8a6828" opacity="0.7"/>
-        </g>
-      ))}
-
-      {/* ── COMPASS ROSE ── */}
-      <g transform="translate(940, 52)">
-        <circle cx="0" cy="0" r="22" fill="#d4b060" stroke="#8a5820" strokeWidth="1.5" opacity="0.9"/>
-        <circle cx="0" cy="0" r="17" fill="none" stroke="#8a5820" strokeWidth="0.8" opacity="0.7"/>
-        <circle cx="0" cy="0" r="5"  fill="none" stroke="#8a5820" strokeWidth="0.8" opacity="0.7"/>
-        {/* Cardinal petals */}
-        <polygon points="0,-20 3,-6 -3,-6"   fill="#5a3010" opacity="0.9"/>
-        <polygon points="0,20  3,6  -3,6"    fill="#8a6828" opacity="0.7"/>
-        <polygon points="-20,0 -6,-3 -6,3"  fill="#8a6828" opacity="0.7"/>
-        <polygon points="20,0  6,-3  6,3"   fill="#8a6828" opacity="0.7"/>
-        {/* Intercardinal petals (smaller) */}
-        <polygon points="0,-20 2,-8 -2,-8"  fill="#7a5820" opacity="0.4" transform="rotate(45)"/>
-        <polygon points="0,-20 2,-8 -2,-8"  fill="#7a5820" opacity="0.4" transform="rotate(135)"/>
-        <polygon points="0,-20 2,-8 -2,-8"  fill="#7a5820" opacity="0.4" transform="rotate(225)"/>
-        <polygon points="0,-20 2,-8 -2,-8"  fill="#7a5820" opacity="0.4" transform="rotate(315)"/>
-        <circle cx="0" cy="0" r="3.5" fill="#d4a030"/>
-        <text x="0" y="-26" textAnchor="middle" fontSize="9" fill="#3a1e08"
-          fontFamily="'Cinzel', serif" fontWeight="700"
-          style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>N</text>
-        <text x="0"  y="33" textAnchor="middle" fontSize="7.5" fill="#6a5030"
-          fontFamily="'Cinzel', serif"
-          style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>S</text>
-        <text x="-30" y="4" textAnchor="middle" fontSize="7.5" fill="#6a5030"
-          fontFamily="'Cinzel', serif"
-          style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>W</text>
-        <text x="30"  y="4" textAnchor="middle" fontSize="7.5" fill="#6a5030"
-          fontFamily="'Cinzel', serif"
-          style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>E</text>
-      </g>
-
-      {/* ── RESULT: line between guess and answer ── */}
+      {/* SVG pin + line layer — positioned as % of viewport */}
+      {/* @ts-ignore */}
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10, overflow: 'visible' } as React.CSSProperties}>
+      {/* ── RESULT: dashed line between guess and answer ── */}
       {result && rp && ap && (
-        <line x1={rp.x} y1={rp.y} x2={ap.x} y2={ap.y}
+        // @ts-ignore
+        <line x1={pct(rp.x)} y1={pct(rp.y)} x2={pct(ap.x)} y2={pct(ap.y)}
           stroke="#8a3010" strokeWidth="2" strokeDasharray="6,4" opacity="0.9"/>
       )}
 
       {/* Pending guess pin */}
       {!result && gp && (
-        <g transform={`translate(${gp.x},${gp.y - 20})`} filter="url(#pinGlow)">
-          <circle r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.95"/>
-          <circle r="4"  fill="#f0e8d8" opacity="0.9"/>
-          <line x1="0" y1="11" x2="0" y2="20" stroke="#c0391b" strokeWidth="1.5"/>
-        </g>
+        <>
+          {/* @ts-ignore */}
+          <circle cx={pct(gp.x)} cy={pct(gp.y)} r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.95"/>
+          {/* @ts-ignore */}
+          <circle cx={pct(gp.x)} cy={pct(gp.y)} r="4" fill="#f0e8d8" opacity="0.9"/>
+        </>
       )}
       {/* Post-result: guess pin */}
       {result && rp && (
-        <g transform={`translate(${rp.x},${rp.y - 20})`} filter="url(#pinGlow)">
-          <circle r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.9"/>
-          <circle r="4"  fill="#f0e8d8" opacity="0.85"/>
-          <line x1="0" y1="11" x2="0" y2="20" stroke="#c0391b" strokeWidth="1.5"/>
-        </g>
+        <>
+          {/* @ts-ignore */}
+          <circle cx={pct(rp.x)} cy={pct(rp.y)} r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.9"/>
+          {/* @ts-ignore */}
+          <circle cx={pct(rp.x)} cy={pct(rp.y)} r="4" fill="#f0e8d8" opacity="0.85"/>
+        </>
       )}
-      {/* Actual location star */}
+      {/* Actual location gold star */}
       {result && ap && (
-        <g transform={`translate(${ap.x},${ap.y})`} filter="url(#pinGlow)">
-          <circle r="13" fill="#d4a030" stroke="#f5e8c0" strokeWidth="2.5" opacity="0.97"/>
-          <text textAnchor="middle" dy="5" fontSize="13" fill="#1a0e04" fontWeight="bold"
-            style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>★</text>
-        </g>
-      )}
-
-      {/* Legend */}
-      {result && (
-        <g transform="translate(12, 525)">
-          <rect x="-2" y="-12" width="200" height="24" fill="rgba(210,180,100,0.85)" rx="1"/>
-          <rect x="-2" y="-12" width="200" height="24" rx="1" fill="none" stroke="#8a6028" strokeWidth="0.8"/>
-          <circle cx="14" cy="0" r="7" fill="#c0391b" stroke="#f0e0c0" strokeWidth="1.2"/>
-          <circle cx="14" cy="0" r="2.5" fill="#f0e8d8"/>
-          <text x="26" y="4" fontSize="8" fill="#2a1808"
-            fontFamily="'Cinzel', serif" letterSpacing="0.8"
-            style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>YOUR GUESS</text>
-          <circle cx="120" cy="0" r="8" fill="#d4a030" stroke="#f5e8c0" strokeWidth="1.5"/>
-          <text textAnchor="middle" x="120" y="4" fontSize="9" fill="#1a0e04"
-            style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>★</text>
-          <text x="133" y="4" fontSize="8" fill="#2a1808"
-            fontFamily="'Cinzel', serif" letterSpacing="0.8"
-            style={{ userSelect: 'none', pointerEvents: 'none' } as React.CSSProperties}>ACTUAL</text>
-        </g>
+        <>
+          {/* @ts-ignore */}
+          <circle cx={pct(ap.x)} cy={pct(ap.y)} r="13" fill="#d4a030" stroke="#f5e8c0" strokeWidth="2.5" opacity="0.97"/>
+          {/* @ts-ignore */}
+          <text x={pct(ap.x)} y={pct(ap.y)} textAnchor="middle" dy="5" fontSize="13" fill="#1a0e04" fontWeight="bold"
+            style={{ userSelect: 'none' } as React.CSSProperties}>★</text>
+        </>
       )}
 
       {/* Click hint */}
       {!disabled && !pendingGuess && (
-        <text x={MAP_W/2} y={MAP_H-10} textAnchor="middle" fontSize="8.5" fill="#4a6070"
-          fontFamily="'Cinzel', serif" letterSpacing="2.5"
-          style={{ pointerEvents: 'none' } as React.CSSProperties}>
+        // @ts-ignore
+        <text x="50%" y="92%" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.5)"
+          fontFamily="'Cinzel', serif" letterSpacing="2"
+          style={{ userSelect: 'none' } as React.CSSProperties}>
           CLICK THE MAP TO PLACE YOUR MARK
         </text>
       )}
-    </svg>
+      </svg>
+
+    {/* @ts-ignore */}
+    </div>
   );
 }
 
@@ -1085,12 +805,27 @@ function GameScreen({ state, currentResult, onGuess, onSubmit, onNext, onExit, t
   totalRounds: number;
 }) {
   const [mapExpanded, setMapExpanded] = useState(false);
+  const mapOverlayRef = useRef<HTMLDivElement>(null);
   const loc = state.locations[state.round];
   const hc  = HOUSE_COLORS[loc.house];
   const isResult = state.phase === 'round-result';
   const hasGuess = !!state.pendingGuess;
 
   useEffect(() => { if (isResult) setMapExpanded(true); }, [isResult]);
+
+  useEffect(() => {
+    if (isResult || !mapExpanded) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const root = mapOverlayRef.current;
+      if (!root) return;
+      const target = event.target as Node | null;
+      if (target && !root.contains(target)) {
+        setMapExpanded(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => window.removeEventListener('mousedown', handlePointerDown);
+  }, [isResult, mapExpanded]);
 
   const mapClass = isResult ? 'result' : mapExpanded ? 'expanded' : 'collapsed';
 
@@ -1164,9 +899,9 @@ function GameScreen({ state, currentResult, onGuess, onSubmit, onNext, onExit, t
       {/* ── GeoGuessr-style collapsible map ── */}
       {/* @ts-ignore */}
       <div
+        ref={mapOverlayRef}
         className={`map-overlay ${mapClass}`}
         onMouseEnter={() => { if (!isResult) setMapExpanded(true); }}
-        onMouseLeave={() => { if (!isResult) setMapExpanded(false); }}
       >
         <WorldMap
           onGuess={onGuess}
@@ -1227,7 +962,7 @@ const gSt = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingLeft: 30, paddingVertical: 20,
     // @ts-ignore
-    paddingRight: 'calc(min(740px, 74vw) + 44px)',
+    paddingRight: 'calc(min(700px, 70vw) + 44px)',
     backgroundColor: 'rgba(10,6,2,0.90)',
     borderTopWidth: 1, borderTopColor: '#2a1808',
     zIndex: 5,

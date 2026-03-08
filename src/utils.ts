@@ -1,6 +1,11 @@
-/** Pixel distance between two points on the GoT world map SVG (1000×560). */
+/**
+ * Distance between two points expressed as 0-1 fractions of the map.
+ * Scaled back to the original 1000×560 pixel space so scoring thresholds remain valid.
+ */
 export function gotMapDistance(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.round(Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2));
+  const dx = (x2 - x1) * 1000;
+  const dy = (y2 - y1) * 560;
+  return Math.round(Math.sqrt(dx * dx + dy * dy));
 }
 
 /** Score based on GoT map pixel distance. Max map diagonal ≈ 1152 px. */
