@@ -106,9 +106,10 @@ const ALL_LOCATIONS: Location[] = [
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function gotMapDistance(x1: number, y1: number, x2: number, y2: number) {
-  // Coordinates are 0-1 fractions; scale to 1000×560 pixel space for scoring
+  // Coordinates are normalized map fractions (0-1), left->right and top->bottom.
+  // Scale evenly so score weighting is fair in all directions.
   const dx = (x2 - x1) * 1000;
-  const dy = (y2 - y1) * 560;
+  const dy = (y2 - y1) * 1000;
   return Math.round(Math.sqrt(dx * dx + dy * dy));
 }
 
@@ -363,6 +364,29 @@ const MAP_ZOOM_SETTINGS = {
   wheelDebounceTime: 0,
 };
 
+const MAP_BOUNDS = {
+  minLat: -85,
+  maxLat: 85,
+  minLng: -180,
+  maxLng: 180,
+};
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function fractionToLatLng(x: number, y: number): [number, number] {
+  const lng = MAP_BOUNDS.minLng + (clamp01(x) * (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng));
+  const lat = MAP_BOUNDS.maxLat - (clamp01(y) * (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat));
+  return [lat, lng];
+}
+
+function latLngToFraction(lat: number, lng: number): { x: number; y: number } {
+  const x = (lng - MAP_BOUNDS.minLng) / (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng);
+  const y = (MAP_BOUNDS.maxLat - lat) / (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat);
+  return { x: clamp01(x), y: clamp01(y) };
+}
+
 // Mirrors quartermaester.info/ASoIaF-objects.js getTileCode(coord, zoom).
 function getTileCode(coord: { x: number; y: number }, z: number): string {
   let range = Math.pow(2, z);
@@ -419,6 +443,8 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null); // Use 'any' since L is imported dynamically
+  const leafletRef = useRef<any>(null);
+  const gameLayerRef = useRef<any>(null);
   const disabledRef = useRef(disabled);
   const onGuessRef = useRef(onGuess);
 
@@ -434,6 +460,7 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
     // Dynamically import Leaflet only on client
     import('leaflet').then((module) => {
       const L = module.default;
+      leafletRef.current = L;
 
       const QuartermaesterTileLayer = (L.TileLayer as any).extend({
         getTileUrl(coords: any) {
@@ -466,14 +493,14 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
         scrollWheelZoom: true,
         doubleClickZoom: true,
         worldCopyJump: false,
-        maxBounds: L.latLngBounds([[-85, -180], [85, 180]]),
+        maxBounds: L.latLngBounds([[MAP_BOUNDS.minLat, MAP_BOUNDS.minLng], [MAP_BOUNDS.maxLat, MAP_BOUNDS.maxLng]]),
         maxBoundsViscosity: 1.0,
       });
 
       const tileLayer = new QuartermaesterTileLayer('', {
         tileSize: 256,
         noWrap: true,
-        bounds: L.latLngBounds([[-85, -180], [85, 180]]),
+        bounds: L.latLngBounds([[MAP_BOUNDS.minLat, MAP_BOUNDS.minLng], [MAP_BOUNDS.maxLat, MAP_BOUNDS.maxLng]]),
         minZoom: MAP_ZOOM_SETTINGS.minZoom,
         maxZoom: MAP_ZOOM_SETTINGS.maxZoom,
         maxNativeZoom: 5,
@@ -522,12 +549,11 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
       map.on('zoomend', updateLabelOpacity);
       setTimeout(updateLabelOpacity, 0);
 
+      gameLayerRef.current = L.layerGroup().addTo(map);
+
       map.on('click', (e: any) => {
         if (disabledRef.current) return;
-        const size = map.getSize();
-        if (!size?.x || !size?.y) return;
-        const x = e.containerPoint.x / size.x;
-        const y = e.containerPoint.y / size.y;
+        const { x, y } = latLngToFraction(e.latlng.lat, e.latlng.lng);
         onGuessRef.current(x, y);
       });
 
@@ -568,11 +594,86 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  
+  // Render gameplay pins and result line in map coordinates (not viewport coordinates).
+  useEffect(() => {
+    if (!leafletMapRef.current || !gameLayerRef.current || !leafletRef.current) return;
+    const layer = gameLayerRef.current;
+    layer.clearLayers();
+    const L = leafletRef.current;
 
-  const gp = pendingGuess ?? null;
-  const ap = result ? { x: result.location.gotX, y: result.location.gotY } : null;
-  const rp = result ? { x: result.guessX, y: result.guessY } : null;
-  const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
+    const pending = pendingGuess ?? null;
+    const answer = result ? { x: result.location.gotX, y: result.location.gotY } : null;
+    const guessed = result ? { x: result.guessX, y: result.guessY } : null;
+
+    if (!result && pending) {
+      const [lat, lng] = fractionToLatLng(pending.x, pending.y);
+      L.circleMarker([lat, lng], {
+        radius: 11,
+        color: '#f0e0c0',
+        weight: 2,
+        fillColor: '#c0391b',
+        fillOpacity: 0.95,
+        interactive: false,
+      }).addTo(layer);
+      L.circleMarker([lat, lng], {
+        radius: 4,
+        color: '#f0e8d8',
+        weight: 0,
+        fillColor: '#f0e8d8',
+        fillOpacity: 0.9,
+        interactive: false,
+      }).addTo(layer);
+    }
+
+    if (result && guessed && answer) {
+      const [gLat, gLng] = fractionToLatLng(guessed.x, guessed.y);
+      const [aLat, aLng] = fractionToLatLng(answer.x, answer.y);
+
+      L.polyline([[gLat, gLng], [aLat, aLng]], {
+        color: '#8a3010',
+        weight: 2,
+        dashArray: '6,4',
+        opacity: 0.9,
+        interactive: false,
+      }).addTo(layer);
+
+      L.circleMarker([gLat, gLng], {
+        radius: 11,
+        color: '#f0e0c0',
+        weight: 2,
+        fillColor: '#c0391b',
+        fillOpacity: 0.9,
+        interactive: false,
+      }).addTo(layer);
+      L.circleMarker([gLat, gLng], {
+        radius: 4,
+        color: '#f0e8d8',
+        weight: 0,
+        fillColor: '#f0e8d8',
+        fillOpacity: 0.85,
+        interactive: false,
+      }).addTo(layer);
+
+      L.circleMarker([aLat, aLng], {
+        radius: 13,
+        color: '#f5e8c0',
+        weight: 2.5,
+        fillColor: '#d4a030',
+        fillOpacity: 0.97,
+        interactive: false,
+      }).addTo(layer);
+      L.marker([aLat, aLng], {
+        interactive: false,
+        icon: L.divIcon({
+          className: 'qm-label qm-label-major',
+          html: '<span style="color:#1a0e04; text-shadow:none;">★</span>',
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        }),
+      }).addTo(layer);
+    }
+  }, [pendingGuess, result]);
 
   return (
     // @ts-ignore
@@ -590,56 +691,24 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
           cursor: disabled ? 'default' : 'crosshair',
         } as React.CSSProperties}
       />
-
-      {/* SVG pin + line layer — positioned as % of viewport */}
-      {/* @ts-ignore */}
-      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10, overflow: 'visible' } as React.CSSProperties}>
-      {/* ── RESULT: dashed line between guess and answer ── */}
-      {result && rp && ap && (
-        // @ts-ignore
-        <line x1={pct(rp.x)} y1={pct(rp.y)} x2={pct(ap.x)} y2={pct(ap.y)}
-          stroke="#8a3010" strokeWidth="2" strokeDasharray="6,4" opacity="0.9"/>
-      )}
-
-      {/* Pending guess pin */}
-      {!result && gp && (
-        <>
-          {/* @ts-ignore */}
-          <circle cx={pct(gp.x)} cy={pct(gp.y)} r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.95"/>
-          {/* @ts-ignore */}
-          <circle cx={pct(gp.x)} cy={pct(gp.y)} r="4" fill="#f0e8d8" opacity="0.9"/>
-        </>
-      )}
-      {/* Post-result: guess pin */}
-      {result && rp && (
-        <>
-          {/* @ts-ignore */}
-          <circle cx={pct(rp.x)} cy={pct(rp.y)} r="11" fill="#c0391b" stroke="#f0e0c0" strokeWidth="2" opacity="0.9"/>
-          {/* @ts-ignore */}
-          <circle cx={pct(rp.x)} cy={pct(rp.y)} r="4" fill="#f0e8d8" opacity="0.85"/>
-        </>
-      )}
-      {/* Actual location gold star */}
-      {result && ap && (
-        <>
-          {/* @ts-ignore */}
-          <circle cx={pct(ap.x)} cy={pct(ap.y)} r="13" fill="#d4a030" stroke="#f5e8c0" strokeWidth="2.5" opacity="0.97"/>
-          {/* @ts-ignore */}
-          <text x={pct(ap.x)} y={pct(ap.y)} textAnchor="middle" dy="5" fontSize="13" fill="#1a0e04" fontWeight="bold"
-            style={{ userSelect: 'none' } as React.CSSProperties}>★</text>
-        </>
-      )}
-
-      {/* Click hint */}
       {!disabled && !pendingGuess && (
         // @ts-ignore
-        <text x="50%" y="92%" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.5)"
-          fontFamily="'Cinzel', serif" letterSpacing="2"
-          style={{ userSelect: 'none' } as React.CSSProperties}>
+        <div style={{
+          position: 'absolute',
+          left: '50%',
+          bottom: 44,
+          transform: 'translateX(-50%)',
+          pointerEvents: 'none',
+          zIndex: 1001,
+          color: 'rgba(255,255,255,0.5)',
+          fontFamily: "'Cinzel', serif",
+          fontSize: 11,
+          letterSpacing: 2,
+          userSelect: 'none',
+        } as React.CSSProperties}>
           CLICK THE MAP TO PLACE YOUR MARK
-        </text>
+        </div>
       )}
-      </svg>
 
     {/* @ts-ignore */}
     </div>
