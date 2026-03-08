@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, ActivityIndicator } from 'react-native'; // TouchableOpacity still used in IntroScreen/GameScreen/FinalScreen
 import { StatusBar } from 'expo-status-bar';
-import { QUARTERMAESTER_LABELS, MAJOR_LABEL_KEYS } from './src/data/locations';
+import { MAJOR_LABEL_KEYS } from './src/data/locations';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,13 @@ interface RoundResult {
   guessY: number;
   distanceLeagues: number;
   points: number;
+}
+
+interface QuartermaesterMapLabel {
+  key: string;
+  name: string;
+  lat: number;
+  lng: number;
 }
 
 type GamePhase = 'intro' | 'playing' | 'round-result' | 'final';
@@ -114,12 +121,11 @@ function gotMapDistance(x1: number, y1: number, x2: number, y2: number) {
 }
 
 const GLOBAL_MAX_DISTANCE = Math.round(Math.sqrt((1000 ** 2) + (1000 ** 2)));
-const SCORE_CURVE_EXPONENT = 1.2; // Slight reward bias toward closer guesses.
 
 function calcGotScore(dist: number, maxDist: number) {
   if (maxDist <= 0) return 5000;
   const ratio = Math.max(0, Math.min(1, dist / maxDist));
-  return Math.round(5000 * (1 - Math.pow(ratio, SCORE_CURVE_EXPONENT)));
+  return Math.round(5000 * (1 - ratio));
 }
 
 function getRank(score: number) {
@@ -364,6 +370,7 @@ const MAP_ZOOM_SETTINGS = {
   wheelPxPerZoomLevel: 12,
   wheelDebounceTime: 0,
 };
+const MINOR_LABEL_MIN_ZOOM = 3.9;
 
 const MAP_BOUNDS = {
   minLat: -85,
@@ -371,21 +378,37 @@ const MAP_BOUNDS = {
   minLng: -180,
   maxLng: 180,
 };
+const MERCATOR_MAX_LAT = 85.05112878;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
+// Convert projected world fraction (WebMercator-normalized) -> lat/lng.
 function fractionToLatLng(x: number, y: number): [number, number] {
-  const lng = MAP_BOUNDS.minLng + (clamp01(x) * (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng));
-  const lat = MAP_BOUNDS.maxLat - (clamp01(y) * (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat));
-  return [lat, lng];
+  const fx = clamp01(x);
+  const fy = clamp01(y);
+  const lng = (fx * 360) - 180;
+  const n = Math.PI * (1 - (2 * fy));
+  const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+  return [Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, lat)), lng];
 }
 
+// Convert lat/lng -> projected world fraction (WebMercator-normalized).
 function latLngToFraction(lat: number, lng: number): { x: number; y: number } {
-  const x = (lng - MAP_BOUNDS.minLng) / (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng);
-  const y = (MAP_BOUNDS.maxLat - lat) / (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat);
+  const clampedLat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, lat));
+  const x = (lng + 180) / 360;
+  const latRad = clampedLat * (Math.PI / 180);
+  const y = (1 - (Math.log(Math.tan(latRad) + (1 / Math.cos(latRad))) / Math.PI)) / 2;
   return { x: clamp01(x), y: clamp01(y) };
+}
+
+// Existing location data was authored in legacy linear fractions.
+// Convert it to projected fractions so truth points match Leaflet's tile grid.
+function legacyFractionToProjected(x: number, y: number): { x: number; y: number } {
+  const lng = MAP_BOUNDS.minLng + (clamp01(x) * (MAP_BOUNDS.maxLng - MAP_BOUNDS.minLng));
+  const lat = MAP_BOUNDS.maxLat - (clamp01(y) * (MAP_BOUNDS.maxLat - MAP_BOUNDS.minLat));
+  return latLngToFraction(lat, lng);
 }
 
 // Mirrors quartermaester.info/ASoIaF-objects.js getTileCode(coord, zoom).
@@ -459,9 +482,11 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
     if (!mapRef.current || leafletMapRef.current) return;
 
     // Dynamically import Leaflet only on client
-    import('leaflet').then((module) => {
+    import('leaflet').then(async (module) => {
       const L = module.default;
       leafletRef.current = L;
+      const labelsModule = await import('./src/data/quartermaester-labels.json');
+      const quartermaesterLabels = labelsModule.default as QuartermaesterMapLabel[];
 
       const QuartermaesterTileLayer = (L.TileLayer as any).extend({
         getTileUrl(coords: any) {
@@ -513,9 +538,10 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
       tileLayer.addTo(map);
 
       const labelsLayer = L.layerGroup().addTo(map);
-      const labelMarkers: Array<{ marker: any; isMajor: boolean }> = [];
-      QUARTERMAESTER_LABELS.forEach((location) => {
-        const isMajor = MAJOR_LABEL_KEYS.has(location.key);
+      const majorLabels = quartermaesterLabels.filter((l) => MAJOR_LABEL_KEYS.has(l.key));
+      const minorLabels = quartermaesterLabels.filter((l) => !MAJOR_LABEL_KEYS.has(l.key));
+
+      const createLabelMarker = (location: { lat: number; lng: number; name: string; key: string }, isMajor: boolean) => {
         const marker = L.marker([location.lat, location.lng], {
           interactive: false,
           keyboard: false,
@@ -527,8 +553,48 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
           }),
         });
         marker.setZIndexOffset(isMajor ? 1000 : 0);
-        marker.addTo(labelsLayer);
-        labelMarkers.push({ marker, isMajor });
+        return marker;
+      };
+
+      const majorMarkers: Array<{ marker: any; isMajor: boolean }> = majorLabels.map((location) => ({
+        marker: createLabelMarker(location, true),
+        isMajor: true,
+      }));
+      majorMarkers.forEach(({ marker }) => marker.addTo(labelsLayer));
+
+      const minorMarkers: Array<{ marker: any; isMajor: boolean }> = minorLabels.map((location) => ({
+        marker: createLabelMarker(location, false),
+        isMajor: false,
+      }));
+      let minorVisible = false;
+
+      const setMinorVisibility = (visible: boolean) => {
+        if (visible === minorVisible) return;
+        minorVisible = visible;
+        minorMarkers.forEach(({ marker }) => {
+          if (visible) marker.addTo(labelsLayer);
+          else labelsLayer.removeLayer(marker);
+        });
+      };
+
+      const getActiveLabelMarkers = () =>
+        minorVisible ? [...majorMarkers, ...minorMarkers] : majorMarkers;
+
+      const syncMinorLabelVisibility = () => {
+        setMinorVisibility(map.getZoom() >= MINOR_LABEL_MIN_ZOOM);
+      };
+
+      syncMinorLabelVisibility();
+      map.on('zoomend', syncMinorLabelVisibility);
+
+      // Keep labels in sync during map type/size changes as well.
+      map.on('moveend', syncMinorLabelVisibility);
+
+      // Remove minor labels when zoomed out to keep DOM light.
+      map.on('zoomstart', () => {
+        if (map.getZoom() < MINOR_LABEL_MIN_ZOOM) {
+          setMinorVisibility(false);
+        }
       });
 
       const clamp = (n: number) => Math.max(0, Math.min(1, n));
@@ -539,7 +605,7 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
         // Minor labels fade out as user zooms out.
         const minorOpacity = clamp((z - 3.35) / 1.15);
 
-        labelMarkers.forEach(({ marker, isMajor }) => {
+        getActiveLabelMarkers().forEach(({ marker, isMajor }) => {
           const el = marker.getElement() as HTMLElement | null;
           if (!el) return;
           const opacity = isMajor ? majorOpacity : minorOpacity;
@@ -604,7 +670,7 @@ function WorldMap({ onGuess, pendingGuess, result, disabled }: {
     const L = leafletRef.current;
 
     const pending = pendingGuess ?? null;
-    const answer = result ? { x: result.location.gotX, y: result.location.gotY } : null;
+    const answer = result ? legacyFractionToProjected(result.location.gotX, result.location.gotY) : null;
     const guessed = result ? { x: result.guessX, y: result.guessY } : null;
 
     if (!result && pending) {
@@ -1137,7 +1203,8 @@ export default function App() {
   const submitGuess = useCallback(() => setState(s => {
     if (!s.pendingGuess || s.phase !== 'playing') return s;
     const loc  = s.locations[s.round];
-    const dist = gotMapDistance(s.pendingGuess.x, s.pendingGuess.y, loc.gotX, loc.gotY);
+    const truth = legacyFractionToProjected(loc.gotX, loc.gotY);
+    const dist = gotMapDistance(s.pendingGuess.x, s.pendingGuess.y, truth.x, truth.y);
     const pts  = calcGotScore(dist, GLOBAL_MAX_DISTANCE);
     const result: RoundResult = {
       location: loc, guessX: s.pendingGuess.x, guessY: s.pendingGuess.y,

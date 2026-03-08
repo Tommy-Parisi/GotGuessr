@@ -9,7 +9,8 @@ Successfully reverse-engineered and integrated Quartermaester's proprietary tile
 Quartermaester uses a **Keyhole Quadtree** encoding scheme (`getTileCode` function):
 - Takes tile coordinates `{x, y}` at zoom level `z`
 - Outputs a string like `"tqrst"` representing the path through the quadtree
-- Tiles are accessed via: `https://quartermaester.info/fsm/{encoded}.jpg`
+- Unlabeled tiles are accessed via: `https://quartermaester.info/nat/{encoded}.jpg`
+- Labeled variant (optional) is: `https://quartermaester.info/fsm/{encoded}.jpg`
 
 **Quadrants:**
 - `q` = top-left (x < midpoint, y < midpoint)
@@ -47,7 +48,8 @@ const QuartermaestrTileLayer = (L.TileLayer as any).extend({
     const x = coords.x;
     const y = coords.y;
     const code = getTileCode(x, y, z);
-    return `https://quartermaester.info/fsm/${code}.jpg`;
+    // Use /nat/ for unlabeled base map tiles
+    return `https://quartermaester.info/nat/${code}.jpg`;
   },
 });
 
@@ -79,4 +81,4 @@ To verify tiles are loading:
 1. Run: `npm run web`
 2. Open http://localhost:8081 in browser
 3. Map should display Quartermaester's Westeros tiles
-4. Pan/zoom should load new tiles dynamically from https://quartermaester.info/fsm/tXXX.jpg URLs
+4. Pan/zoom should load new tiles dynamically from https://quartermaester.info/nat/tXXX.jpg URLs

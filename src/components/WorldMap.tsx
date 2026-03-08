@@ -10,11 +10,11 @@ interface Props {
 }
 
 export default function WorldMap({ onGuess, pendingGuess, result, disabled }: Props) {
-  const overlayRef = useRef<any>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (disabled) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
     onGuess(x, y);
